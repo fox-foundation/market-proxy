@@ -15,15 +15,13 @@ import (
 )
 
 type ProxydConfig struct {
+	ListenAddr   string `envconfig:"PROXYD_LISTEN_ADDR"`
 	BaseProxyUrl string `envconfig:"PROXYD_BASE_PROXY_URL"`
 	ProxyApiKey  string `envconfig:"PROXYD_PROXY_API_KEY"`
 	CacheTTL     int    `envconfig:"PROXYD_CACHE_TTL_SECS"`
 	AllowOrigin  string `envconfig:"PROXYD_ALLOW_ORIGIN"`
 	AllowHeaders string `envconfig:"PROXYD_ALLOW_HEADERS"`
 	AllowMethods string `envconfig:"PROXYD_ALLOW_METHODS"`
-
-	// local dev only
-	// InsecureSkipVerify bool `envconfig:"PROXYD_INSECURE_SKIP_VERIFY"`
 }
 
 type Proxyd struct {
@@ -50,6 +48,9 @@ func New() *Proxyd {
 		panic(fmt.Sprintf("error loading proxyd config: %+v\n", err))
 	}
 
+	if proxyConfig.ListenAddr == "" {
+		proxyConfig.ListenAddr = ":8080"
+	}
 	if proxyConfig.BaseProxyUrl == "" {
 		proxyConfig.BaseProxyUrl = defaultGeckoApiUrl
 	}
@@ -72,12 +73,6 @@ func New() *Proxyd {
 		templateURL:  template,
 	}
 
-	// if proxyConfig.InsecureSkipVerify {
-	// 	proxyd.reverseProxy.Transport = &http.Transport{
-	// 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	// 	}
-	// }
-
 	// must nil out Director
 	proxyd.reverseProxy.Director = nil
 	proxyd.reverseProxy.Rewrite = proxyd.rewrite
@@ -87,12 +82,30 @@ func New() *Proxyd {
 	http.HandleFunc("/", proxyd.cachingHandler)
 
 	go func() {
-		if err := http.ListenAndServe(":1137", nil); err != nil {
+		if err := http.ListenAndServe(proxyConfig.ListenAddr, nil); err != nil {
 			panic(fmt.Sprintf("error serving http: %v\n", err))
 		}
 	}()
 
 	return proxyd
+}
+
+func (p *Proxyd) cachingHandler(w http.ResponseWriter, r *http.Request) {
+	cachedResponse, ok := p.cache.Get(r)
+	if ok {
+		for k, v := range cachedResponse.headers {
+			w.Header()[k] = v
+		}
+		// set our cache status header
+		w.Header()[cacheStatusHeader] = []string{"HIT"}
+
+		w.WriteHeader(http.StatusOK)
+		if _, err := w.Write(cachedResponse.body); err != nil {
+			fmt.Printf("error writing cache hit response: %+v\n", err)
+		}
+	} else {
+		p.reverseProxy.ServeHTTP(w, r)
+	}
 }
 
 func (p *Proxyd) modifyResponse(r *http.Response) error {
@@ -139,6 +152,17 @@ func (p *Proxyd) modifyResponse(r *http.Response) error {
 	return nil
 }
 
+func (p *Proxyd) rewrite(r *httputil.ProxyRequest) {
+	r.Out.URL.Scheme = p.templateURL.Scheme
+	r.Out.URL.Host = p.templateURL.Host
+	r.Out.Host = p.templateURL.Host
+	r.Out.RemoteAddr = ""
+
+	if p.config.ProxyApiKey != "" {
+		r.Out.Header.Set(geckoApiHeaderName, p.config.ProxyApiKey)
+	}
+}
+
 func (p *Proxyd) accessControl(r *http.Response) {
 	// remove existing access-control* headers
 	for k := range r.Header {
@@ -163,35 +187,6 @@ func (p *Proxyd) accessControl(r *http.Response) {
 		r.Header.Set("Access-Control-Allow-Headers", p.config.AllowHeaders)
 	} else {
 		r.Header.Set("Access-Control-Allow-Headers", "Origin, Content-Type, X-Requested-With, Accept")
-	}
-}
-
-func (p *Proxyd) rewrite(r *httputil.ProxyRequest) {
-	r.Out.URL.Scheme = p.templateURL.Scheme
-	r.Out.URL.Host = p.templateURL.Host
-	r.Out.Host = p.templateURL.Host
-	r.Out.RemoteAddr = ""
-
-	if p.config.ProxyApiKey != "" {
-		r.Out.Header.Set(geckoApiHeaderName, p.config.ProxyApiKey)
-	}
-}
-
-func (p *Proxyd) cachingHandler(w http.ResponseWriter, r *http.Request) {
-	cachedResponse, ok := p.cache.Get(r)
-	if ok {
-		for k, v := range cachedResponse.headers {
-			w.Header()[k] = v
-		}
-		// set our cache status header
-		w.Header()[cacheStatusHeader] = []string{"HIT"}
-
-		w.WriteHeader(http.StatusOK)
-		if _, err := w.Write(cachedResponse.body); err != nil {
-			fmt.Printf("error writing cache hit response: %+v\n", err)
-		}
-	} else {
-		p.reverseProxy.ServeHTTP(w, r)
 	}
 }
 
