@@ -3,6 +3,7 @@ package proxyd
 import (
 	"fmt"
 	"net/http"
+	"time"
 )
 
 type CachedResponse struct {
@@ -18,6 +19,7 @@ type Cache interface {
 // naive in-memory cache
 type MemoryCache struct {
 	data map[string]*CachedResponse
+	ttl  time.Duration
 }
 
 func (m *MemoryCache) Get(r *http.Request) (*CachedResponse, bool) {
@@ -31,6 +33,9 @@ func (m *MemoryCache) Get(r *http.Request) (*CachedResponse, bool) {
 
 func (m *MemoryCache) Put(key string, value *CachedResponse) error {
 	m.data[key] = value
+	time.AfterFunc(m.ttl, func() {
+		delete(m.data, key)
+	})
 	return nil
 }
 

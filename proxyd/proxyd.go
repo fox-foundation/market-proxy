@@ -2,12 +2,12 @@ package proxyd
 
 import (
 	"bytes"
-	"crypto/tls"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"time"
 
 	"github.com/kelseyhightower/envconfig"
 	"github.com/pkg/errors"
@@ -16,6 +16,9 @@ import (
 type ProxydConfig struct {
 	BaseProxyUrl string `envconfig:"PROXYD_BASE_PROXY_URL"`
 	ProxyApiKey  string `envconfig:"PROXYD_PROXY_API_KEY"`
+	CacheTTL     int    `envconfig:"PROXYD_CACHE_TTL_SECS"`
+	// local dev only
+	// InsecureSkipVerify bool `envconfig:"PROXYD_INSECURE_SKIP_VERIFY"`
 }
 
 type Proxyd struct {
@@ -33,6 +36,7 @@ const (
 	maxResponseSize = 1024 * 1024 * 10 // 10MB
 	// header name for authenticated requests to gecko
 	geckoApiHeaderName = "x-cg-pro-api-key"
+	cacheStatusHeader  = "X-Mkt-Cache"
 )
 
 func New() *Proxyd {
@@ -57,16 +61,17 @@ func New() *Proxyd {
 	singleHostReverseProxy := httputil.NewSingleHostReverseProxy(proxyUrl)
 	proxyd := &Proxyd{
 		reverseProxy: singleHostReverseProxy,
-		cache:        &MemoryCache{data: make(map[string]*CachedResponse, 1024)},
+		cache:        &MemoryCache{data: make(map[string]*CachedResponse, 1024), ttl: time.Duration(proxyConfig.CacheTTL) * time.Second},
 		done:         make(chan struct{}),
 		config:       proxyConfig,
 		templateURL:  template,
 	}
 
-	// TODO: Remove InsecureSkipVerify configure tls
-	proxyd.reverseProxy.Transport = &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
+	// if proxyConfig.InsecureSkipVerify {
+	// 	proxyd.reverseProxy.Transport = &http.Transport{
+	// 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	// 	}
+	// }
 
 	// must nil out Director
 	proxyd.reverseProxy.Director = nil
@@ -138,6 +143,9 @@ func (p *Proxyd) cachingHandler(w http.ResponseWriter, r *http.Request) {
 		for k, v := range cachedResponse.headers {
 			w.Header()[k] = v
 		}
+		// set our cache status header
+		w.Header()[cacheStatusHeader] = []string{"HIT"}
+
 		w.WriteHeader(http.StatusOK)
 		if _, err := w.Write(cachedResponse.body); err != nil {
 			fmt.Printf("error writing cache hit response: %+v\n", err)
