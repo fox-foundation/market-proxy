@@ -1,6 +1,9 @@
 package proxyd
 
-import "net/http"
+import (
+	"fmt"
+	"net/http"
+)
 
 type CachedResponse struct {
 	body    []byte
@@ -29,4 +32,10 @@ func (m *MemoryCache) Get(r *http.Request) (*CachedResponse, bool) {
 func (m *MemoryCache) Put(key string, value *CachedResponse) error {
 	m.data[key] = value
 	return nil
+}
+
+func cacheKey(r *http.Request) string {
+	reqUrl := r.URL.Path
+	reqParams := r.URL.Query()
+	return fmt.Sprintf("%s?%s", reqUrl, reqParams.Encode())
 }

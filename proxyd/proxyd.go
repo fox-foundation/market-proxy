@@ -9,19 +9,49 @@ import (
 	"net/http/httputil"
 	"net/url"
 
+	"github.com/kelseyhightower/envconfig"
 	"github.com/pkg/errors"
 )
+
+type ProxydConfig struct {
+	BaseProxyUrl string `envconfig:"PROXYD_BASE_PROXY_URL"`
+	ProxyApiKey  string `envconfig:"PROXYD_PROXY_API_KEY"`
+}
 
 type Proxyd struct {
 	reverseProxy *httputil.ReverseProxy
 	cache        Cache
 	done         chan struct{}
+	config       *ProxydConfig
+	templateURL  *url.URL
 }
 
+const (
+	// default to free/public api
+	defaultGeckoApiUrl = "https://api.coingecko.com"
+	// max response size to attempt to cache
+	maxResponseSize = 1024 * 1024 * 10 // 10MB
+	// header name for authenticated requests to gecko
+	geckoApiHeaderName = "x-cg-pro-api-key"
+)
+
 func New() *Proxyd {
-	proxyUrl, err := url.Parse("https://api.coingecko.com")
+	proxyConfig := &ProxydConfig{}
+	if err := envconfig.Process("", proxyConfig); err != nil {
+		panic(fmt.Sprintf("error loading proxyd config: %+v\n", err))
+	}
+
+	if proxyConfig.BaseProxyUrl == "" {
+		proxyConfig.BaseProxyUrl = defaultGeckoApiUrl
+	}
+	proxyUrl, err := url.Parse(proxyConfig.BaseProxyUrl)
 	if err != nil {
-		panic(err)
+		panic(fmt.Sprintf("error parsing base proxy url: %+v\n", err))
+	}
+
+	template, err := url.Parse(proxyConfig.BaseProxyUrl)
+	if err != nil {
+		panic(fmt.Sprintf("error parsing base proxy url: %+v\n", err))
 	}
 
 	singleHostReverseProxy := httputil.NewSingleHostReverseProxy(proxyUrl)
@@ -29,6 +59,8 @@ func New() *Proxyd {
 		reverseProxy: singleHostReverseProxy,
 		cache:        &MemoryCache{data: make(map[string]*CachedResponse, 1024)},
 		done:         make(chan struct{}),
+		config:       proxyConfig,
+		templateURL:  template,
 	}
 
 	// TODO: Remove InsecureSkipVerify configure tls
@@ -53,8 +85,6 @@ func New() *Proxyd {
 	return proxyd
 }
 
-const maxResponseSize = 1024 * 1024 * 10 // 10MB
-
 func (p *Proxyd) modifyResponse(r *http.Response) error {
 	// Check the ContentLength header
 	if r.ContentLength > maxResponseSize {
@@ -64,15 +94,19 @@ func (p *Proxyd) modifyResponse(r *http.Response) error {
 	}
 
 	// Use a buffer to store the response
-	var buf bytes.Buffer
-	_, err := io.Copy(&buf, r.Body)
+	buf, err := func() (bytes.Buffer, error) {
+		defer r.Body.Close()
+		var buf bytes.Buffer
+		_, err := io.Copy(&buf, r.Body)
+		return buf, err
+	}()
+
 	if err != nil {
 		return errors.Wrapf(err, "error reading proxied response body")
 	}
 
-	// Store the response body in a variable
 	responseBody := buf.Bytes()
-
+	r.Body = io.NopCloser(&buf)
 	// create a cache key, store the response
 	cacheKey := cacheKey(r.Request)
 	cachedResponse := &CachedResponse{
@@ -88,10 +122,14 @@ func (p *Proxyd) modifyResponse(r *http.Response) error {
 }
 
 func (p *Proxyd) rewrite(r *httputil.ProxyRequest) {
-	r.Out.URL.Scheme = "https"
-	r.Out.URL.Host = "api.coingecko.com"
-	r.Out.Host = r.Out.URL.Host
+	r.Out.URL.Scheme = p.templateURL.Scheme
+	r.Out.URL.Host = p.templateURL.Host
+	r.Out.Host = p.templateURL.Host
 	r.Out.RemoteAddr = ""
+
+	if p.config.ProxyApiKey != "" {
+		r.Out.Header.Set(geckoApiHeaderName, p.config.ProxyApiKey)
+	}
 }
 
 func (p *Proxyd) cachingHandler(w http.ResponseWriter, r *http.Request) {
@@ -107,12 +145,6 @@ func (p *Proxyd) cachingHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		p.reverseProxy.ServeHTTP(w, r)
 	}
-}
-
-func cacheKey(r *http.Request) string {
-	reqUrl := r.URL.Path
-	reqParams := r.URL.Query()
-	return fmt.Sprintf("%s?%s", reqUrl, reqParams.Encode())
 }
 
 func (p *Proxyd) Done() chan struct{} {
