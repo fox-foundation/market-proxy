@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/kelseyhightower/envconfig"
@@ -17,6 +18,10 @@ type ProxydConfig struct {
 	BaseProxyUrl string `envconfig:"PROXYD_BASE_PROXY_URL"`
 	ProxyApiKey  string `envconfig:"PROXYD_PROXY_API_KEY"`
 	CacheTTL     int    `envconfig:"PROXYD_CACHE_TTL_SECS"`
+	AllowOrigin  string `envconfig:"PROXYD_ALLOW_ORIGIN"`
+	AllowHeaders string `envconfig:"PROXYD_ALLOW_HEADERS"`
+	AllowMethods string `envconfig:"PROXYD_ALLOW_METHODS"`
+
 	// local dev only
 	// InsecureSkipVerify bool `envconfig:"PROXYD_INSECURE_SKIP_VERIFY"`
 }
@@ -111,7 +116,15 @@ func (p *Proxyd) modifyResponse(r *http.Response) error {
 	}
 
 	responseBody := buf.Bytes()
+
+	// replace the body client will see
 	r.Body = io.NopCloser(&buf)
+
+	p.accessControl(r)
+	r.Header.Set("Cache-Control", "public, max-age=30")
+	r.Header.Set("Age", "0")
+	r.Header.Del("Alternate-Protocol")
+
 	// create a cache key, store the response
 	cacheKey := cacheKey(r.Request)
 	cachedResponse := &CachedResponse{
@@ -124,6 +137,33 @@ func (p *Proxyd) modifyResponse(r *http.Response) error {
 	}
 
 	return nil
+}
+
+func (p *Proxyd) accessControl(r *http.Response) {
+	// remove existing access-control* headers
+	for k := range r.Header {
+		if strings.HasPrefix(strings.ToLower(k), "access-control") {
+			r.Header.Del(k)
+		}
+	}
+
+	if p.config.AllowOrigin != "" {
+		r.Header.Set("Access-Control-Allow-Origin", p.config.AllowOrigin)
+	} else {
+		r.Header.Set("Access-Control-Allow-Origin", "*")
+	}
+
+	if p.config.AllowMethods != "" {
+		r.Header.Set("Access-Control-Allow-Methods", p.config.AllowMethods)
+	} else {
+		r.Header.Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
+	}
+
+	if p.config.AllowHeaders != "" {
+		r.Header.Set("Access-Control-Allow-Headers", p.config.AllowHeaders)
+	} else {
+		r.Header.Set("Access-Control-Allow-Headers", "Origin, Content-Type, X-Requested-With, Accept")
+	}
 }
 
 func (p *Proxyd) rewrite(r *httputil.ProxyRequest) {
