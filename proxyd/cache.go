@@ -3,6 +3,7 @@ package proxyd
 import (
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -16,6 +17,8 @@ type Cache interface {
 	Put(key string, value *CachedResponse) error
 }
 
+var cacheMutex sync.RWMutex
+
 // naive in-memory cache
 type MemoryCache struct {
 	data map[string]*CachedResponse
@@ -23,6 +26,9 @@ type MemoryCache struct {
 }
 
 func (m *MemoryCache) Get(r *http.Request) (*CachedResponse, bool) {
+	cacheMutex.RLock()
+	defer cacheMutex.RUnlock()
+
 	cacheKey := cacheKey(r)
 	if val, ok := m.data[cacheKey]; ok {
 		return val, true
@@ -32,8 +38,13 @@ func (m *MemoryCache) Get(r *http.Request) (*CachedResponse, bool) {
 }
 
 func (m *MemoryCache) Put(key string, value *CachedResponse) error {
+	cacheMutex.Lock()
+	defer cacheMutex.Unlock()
+
 	m.data[key] = value
 	time.AfterFunc(m.ttl, func() {
+		cacheMutex.Lock()
+		defer cacheMutex.Unlock()
 		delete(m.data, key)
 	})
 	return nil
