@@ -77,11 +77,12 @@ func New() *Proxyd {
 	proxyd.reverseProxy.Director = nil
 	proxyd.reverseProxy.Rewrite = proxyd.rewrite
 	proxyd.reverseProxy.ModifyResponse = proxyd.modifyResponse
-
+	proxyd.reverseProxy.ErrorHandler = proxyd.errorHandler
 	// bind / to cache handler
 	http.HandleFunc("/", proxyd.cachingHandler)
 
 	go func() {
+		fmt.Printf("starting proxyd of %s on %s\n", proxyConfig.BaseProxyUrl, proxyConfig.ListenAddr)
 		if err := http.ListenAndServe(proxyConfig.ListenAddr, nil); err != nil {
 			panic(fmt.Sprintf("error serving http: %v\n", err))
 		}
@@ -90,7 +91,17 @@ func New() *Proxyd {
 	return proxyd
 }
 
+func (p *Proxyd) errorHandler(w http.ResponseWriter, r *http.Request, srcErr error) {
+	fmt.Printf("error proxying request: %+v\n", srcErr)
+	http.Error(w, "error proxying request", http.StatusInternalServerError)
+}
+
 func (p *Proxyd) cachingHandler(w http.ResponseWriter, r *http.Request) {
+	if !strings.HasPrefix(r.URL.Path, "/api/v3/") {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+
 	cachedResponse, ok := p.cache.Get(r)
 	if ok {
 		for k, v := range cachedResponse.headers {

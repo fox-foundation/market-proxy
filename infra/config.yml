@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: market-proxy-config
+  namespace: foundation
+data:
+  PROXYD_LISTEN_ADDR: ":80"
+  PROXYD_CACHE_TTL_SECS: "60"
+  PROXYD_BASE_PROXY_URL: "https://pro-api.coingecko.com"
+  PROXYD_ALLOW_ORIGIN: "app.shapeshift.com"
+  PROXYD_ALLOW_HEADERS: "Origin, Content-Type, X-Requested-With, Accept"
+  PROXYD_ALLOW_METHODS: "GET, HEAD, OPTIONS"
+  

@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: market-proxy-service
+  namespace: foundation
+  labels:
+    app: market-proxy
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+      name: market-proxy
+  selector:
+    app: market-proxy-deploy

@@ -1,0 +1,29 @@
+version: '3.6'
+
+networks:
+  market-proxy:
+    driver: bridge
+    attachable: true
+
+services:
+  proxyd:
+    hostname: proxyd
+    # image: ghcr.io/asamere/market-proxy:dev
+    image: market-proxy
+    build:
+      dockerfile: ./Dockerfile
+    pull_policy: always
+    ports:
+      - "8000:8000"
+    networks:
+      - market-proxy
+    environment:
+      # - PROXYD_BASE_PROXY_URL=https://api.coingecko.com
+      - PROXYD_BASE_PROXY_URL=https://pro-api.coingecko.com
+      - PROXYD_PROXY_API_KEY=CG-we5Z4KbdYMCgMUVAqDjQMWfc
+      - PROXYD_CACHE_TTL_SECS=10
+      - PROXYD_ALLOW_ORIGIN=*
+      - PROXYD_ALLOW_HEADERS=Origin, Content-Type, X-Requested-With, Accept
+      - PROXYD_ALLOW_METHODS=GET,HEAD,OPTIONS
+      - PROXYD_LISTEN_ADDR=:8000
+    entrypoint: /proxyd
