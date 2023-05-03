@@ -1,0 +1,17 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  generation: 1
+  name: market-proxy-ingress-choe
+  namespace: foundation
+spec:
+  rules:
+    - host: market-proxy.megacluster.prod.chiefhappinessofficerellie.org
+      http:
+        paths:
+          - backend:
+              service:
+                name: market-proxy-service
+                port:
+                  number: 8000
+            pathType: ImplementationSpecific

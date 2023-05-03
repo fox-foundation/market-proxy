@@ -6,9 +6,9 @@ metadata:
   labels:
     app: market-proxy
 spec:
-  type: LoadBalancer
+  type: ClusterIP
   ports:
-    - port: 80
-      name: market-proxy
+    - port: 8000
+      name: http
   selector:
     app: market-proxy-deploy

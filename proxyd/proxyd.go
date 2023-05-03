@@ -78,6 +78,7 @@ func New() *Proxyd {
 	proxyd.reverseProxy.Rewrite = proxyd.rewrite
 	proxyd.reverseProxy.ModifyResponse = proxyd.modifyResponse
 	proxyd.reverseProxy.ErrorHandler = proxyd.errorHandler
+
 	// bind / to cache handler
 	http.HandleFunc("/", proxyd.cachingHandler)
 
@@ -94,6 +95,17 @@ func New() *Proxyd {
 func (p *Proxyd) errorHandler(w http.ResponseWriter, r *http.Request, srcErr error) {
 	fmt.Printf("error proxying request: %+v\n", srcErr)
 	http.Error(w, "error proxying request", http.StatusInternalServerError)
+}
+
+func (p *Proxyd) rewrite(r *httputil.ProxyRequest) {
+	r.Out.URL.Scheme = p.templateURL.Scheme
+	r.Out.URL.Host = p.templateURL.Host
+	r.Out.Host = p.templateURL.Host
+	r.Out.RemoteAddr = ""
+
+	if p.config.ProxyApiKey != "" {
+		r.Out.Header.Set(geckoApiHeaderName, p.config.ProxyApiKey)
+	}
 }
 
 func (p *Proxyd) cachingHandler(w http.ResponseWriter, r *http.Request) {
@@ -161,17 +173,6 @@ func (p *Proxyd) modifyResponse(r *http.Response) error {
 	}
 
 	return nil
-}
-
-func (p *Proxyd) rewrite(r *httputil.ProxyRequest) {
-	r.Out.URL.Scheme = p.templateURL.Scheme
-	r.Out.URL.Host = p.templateURL.Host
-	r.Out.Host = p.templateURL.Host
-	r.Out.RemoteAddr = ""
-
-	if p.config.ProxyApiKey != "" {
-		r.Out.Header.Set(geckoApiHeaderName, p.config.ProxyApiKey)
-	}
 }
 
 func (p *Proxyd) accessControl(r *http.Response) {
