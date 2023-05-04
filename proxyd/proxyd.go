@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -15,13 +16,13 @@ import (
 )
 
 type ProxydConfig struct {
-	ListenAddr     string `envconfig:"PROXYD_LISTEN_ADDR"`
-	BaseProxyUrl   string `envconfig:"PROXYD_BASE_PROXY_URL"`
-	ProxyApiKey    string `envconfig:"PROXYD_PROXY_API_KEY"`
-	CacheTTL       int    `envconfig:"PROXYD_CACHE_TTL_SECS"`
-	RestrictOrigin bool   `envconfig:"PROXYD_RESTRICT_ORIGIN"`
-	AllowHeaders   string `envconfig:"PROXYD_ALLOW_HEADERS"`
-	AllowMethods   string `envconfig:"PROXYD_ALLOW_METHODS"`
+	ListenAddr       string `envconfig:"PROXYD_LISTEN_ADDR"`
+	BaseProxyUrl     string `envconfig:"PROXYD_BASE_PROXY_URL"`
+	ProxyApiKey      string `envconfig:"PROXYD_PROXY_API_KEY"`
+	CacheTTL         int    `envconfig:"PROXYD_CACHE_TTL_SECS"`
+	NoRestrictOrigin bool   `envconfig:"PROXYD_NO_RESTRICT_ORIGIN"`
+	AllowHeaders     string `envconfig:"PROXYD_ALLOW_HEADERS"`
+	AllowMethods     string `envconfig:"PROXYD_ALLOW_METHODS"`
 }
 
 type Proxyd struct {
@@ -40,6 +41,11 @@ const (
 	// header name for authenticated requests to gecko
 	geckoApiHeaderName = "x-cg-pro-api-key"
 	cacheStatusHeader  = "X-Mkt-Cache"
+
+	OriginHeader                    = "Origin"
+	AccessControlAllowOriginHeader  = "Access-Control-Allow-Origin"
+	AccessControlAllowHeadersHeader = "Access-Control-Allow-Headers"
+	AccessControlAllowMethodsHeader = "Access-Control-Allow-Methods"
 )
 
 func New() *Proxyd {
@@ -122,6 +128,11 @@ func (p *Proxyd) cachingHandler(w http.ResponseWriter, r *http.Request) {
 		// set our cache status header
 		w.Header()[cacheStatusHeader] = []string{"HIT"}
 
+		accessControlHeaders := p.getAccessControlHeaders(r)
+		for k, v := range accessControlHeaders {
+			w.Header().Set(k, v)
+		}
+
 		w.WriteHeader(http.StatusOK)
 		if _, err := w.Write(cachedResponse.body); err != nil {
 			fmt.Printf("error writing cache hit response: %+v\n", err)
@@ -158,7 +169,11 @@ func (p *Proxyd) modifyResponse(r *http.Response) error {
 	// replace the body client will see
 	r.Body = io.NopCloser(&buf)
 
-	p.accessControl(r)
+	accessControlHeaders := p.getAccessControlHeaders(r.Request)
+	for k, v := range accessControlHeaders {
+		r.Header.Set(k, v)
+	}
+
 	r.Header.Set("Cache-Control", "public, max-age=30")
 	r.Header.Set("Age", "0")
 	r.Header.Del("Alternate-Protocol")
@@ -177,37 +192,29 @@ func (p *Proxyd) modifyResponse(r *http.Response) error {
 	return nil
 }
 
-func (p *Proxyd) accessControl(r *http.Response) {
-	// remove existing access-control* headers
-	for k := range r.Header {
-		if strings.HasPrefix(strings.ToLower(k), "access-control") {
-			r.Header.Del(k)
+func (p *Proxyd) getAccessControlHeaders(r *http.Request) map[string]string {
+	if p.config.NoRestrictOrigin {
+		return map[string]string{
+			AccessControlAllowOriginHeader:  "*",
+			AccessControlAllowMethodsHeader: "GET, HEAD, OPTIONS",
+			AccessControlAllowHeadersHeader: "*",
 		}
 	}
 
-	if p.config.RestrictOrigin {
-		if strings.HasSuffix(r.Request.Header.Get("Origin"), "shapeshift.com") {
-			r.Header.Set("Access-Control-Allow-Origin", r.Request.Header.Get("Origin"))
-		} else if strings.HasPrefix(r.Request.Header.Get("Origin"), "http://localhost:") {
-			r.Header.Set("Access-Control-Allow-Origin", r.Request.Header.Get("Origin"))
-		} else {
-			r.Header.Set("Access-Control-Allow-Origin", "app.shapeshift.com")
-		}
+	accessControlHeaders := make(map[string]string, 8)
+	shapeShiftComRegex := regexp.MustCompile(`^https:\/\/.*\.shapeshift\.com$`)
+	localhostRegex := regexp.MustCompile(`^http:\/\/localhost:\d+$`)
+
+	if shapeShiftComRegex.MatchString(r.Header.Get(OriginHeader)) || localhostRegex.MatchString(r.Header.Get(OriginHeader)) {
+		accessControlHeaders[AccessControlAllowOriginHeader] = r.Header.Get(OriginHeader)
 	} else {
-		r.Header.Set("Access-Control-Allow-Origin", "*")
+		accessControlHeaders[AccessControlAllowOriginHeader] = "https://app.shapeshift.com"
 	}
 
-	if p.config.AllowMethods != "" {
-		r.Header.Set("Access-Control-Allow-Methods", p.config.AllowMethods)
-	} else {
-		r.Header.Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
-	}
+	accessControlHeaders[AccessControlAllowMethodsHeader] = p.config.AllowMethods
+	accessControlHeaders[AccessControlAllowHeadersHeader] = p.config.AllowHeaders
 
-	if p.config.AllowHeaders != "" {
-		r.Header.Set("Access-Control-Allow-Headers", p.config.AllowHeaders)
-	} else {
-		r.Header.Set("Access-Control-Allow-Headers", "Origin, Content-Type, X-Requested-With, Accept")
-	}
+	return accessControlHeaders
 }
 
 func (p *Proxyd) Done() chan struct{} {
