@@ -74,8 +74,8 @@ func New() *Proxyd {
 	}
 
 	// must nil out Director
-	proxyd.reverseProxy.Director = nil
-	proxyd.reverseProxy.Rewrite = proxyd.rewrite
+	proxyd.reverseProxy.Director = proxyd.director
+	// proxyd.reverseProxy.Rewrite = proxyd.rewrite
 	proxyd.reverseProxy.ModifyResponse = proxyd.modifyResponse
 	proxyd.reverseProxy.ErrorHandler = proxyd.errorHandler
 
@@ -97,14 +97,14 @@ func (p *Proxyd) errorHandler(w http.ResponseWriter, r *http.Request, srcErr err
 	http.Error(w, "error proxying request", http.StatusInternalServerError)
 }
 
-func (p *Proxyd) rewrite(r *httputil.ProxyRequest) {
-	r.Out.URL.Scheme = p.templateURL.Scheme
-	r.Out.URL.Host = p.templateURL.Host
-	r.Out.Host = p.templateURL.Host
-	r.Out.RemoteAddr = ""
+func (p *Proxyd) director(r *http.Request) {
+	r.URL.Scheme = p.templateURL.Scheme
+	r.URL.Host = p.templateURL.Host
+	r.Host = p.templateURL.Host
+	r.RemoteAddr = ""
 
 	if p.config.ProxyApiKey != "" {
-		r.Out.Header.Set(geckoApiHeaderName, p.config.ProxyApiKey)
+		r.Header.Set(geckoApiHeaderName, p.config.ProxyApiKey)
 	}
 }
 
@@ -126,8 +126,10 @@ func (p *Proxyd) cachingHandler(w http.ResponseWriter, r *http.Request) {
 		if _, err := w.Write(cachedResponse.body); err != nil {
 			fmt.Printf("error writing cache hit response: %+v\n", err)
 		}
+		fmt.Printf("request: %s served from cache\n", r.URL.Path)
 	} else {
 		p.reverseProxy.ServeHTTP(w, r)
+		fmt.Printf("request: %s proxied\n", r.URL.Path)
 	}
 }
 

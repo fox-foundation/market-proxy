@@ -1,0 +1,12 @@
+GET https://markets.shapeshift.com/api/v3/coins/litecoin
+GET https://markets.shapeshift.com/api/v3/coins/bitcoin
+GET https://markets.shapeshift.com/api/v3/coins/ethereum
+GET https://markets.shapeshift.com/api/v3/coins/monero
+GET https://markets.shapeshift.com/api/v3/coins/shapeshift-fox-token
+GET https://markets.shapeshift.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=1&sparkline=false
+GET https://markets.shapeshift.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=3&sparkline=false
+GET https://markets.shapeshift.com/api/v3/coins/cosmos?
+GET https://markets.shapeshift.com/api/v3/coins/ethereum/market_chart/range?vs_currency=usd&from=1680627060&to=1683219060
+GET https://markets.shapeshift.com/api/v3/coins/ethereum/contract/0xba100000625a3754423978a60c9317c58a424e3d/market_chart/range?vs_currency=usd&from=1680627060&to=1683219060
+GET https://markets.shapeshift.com/api/v3/coins/ethereum/contract/0x0d8775f648430679a709e98d2b0cb6250d2887ef
+GET https://markets.shapeshift.com/api/v3/coins/ethereum/contract/0x221657776846890989a759ba2973e427dff5c9bb/market_chart/range?vs_currency=usd&from=1680627060&to=1683219060

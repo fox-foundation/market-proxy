@@ -4,3 +4,4 @@ node_modules/
 Pulumi.*.yaml
 !Pulumi.sample.yaml
 **/__debug_bin
+results.bin

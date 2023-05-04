@@ -1,0 +1,5 @@
+GET http://localhost:1137/api/v3/coins/litecoin
+GET http://localhost:1137/api/v3/coins/bitcoin
+GET http://localhost:1137/api/v3/coins/ethereum
+GET http://localhost:1137/api/v3/coins/monero
+GET http://localhost:1137/api/v3/coins/shapeshift-fox-token
