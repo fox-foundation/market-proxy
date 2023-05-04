@@ -15,13 +15,13 @@ import (
 )
 
 type ProxydConfig struct {
-	ListenAddr   string `envconfig:"PROXYD_LISTEN_ADDR"`
-	BaseProxyUrl string `envconfig:"PROXYD_BASE_PROXY_URL"`
-	ProxyApiKey  string `envconfig:"PROXYD_PROXY_API_KEY"`
-	CacheTTL     int    `envconfig:"PROXYD_CACHE_TTL_SECS"`
-	AllowOrigin  string `envconfig:"PROXYD_ALLOW_ORIGIN"`
-	AllowHeaders string `envconfig:"PROXYD_ALLOW_HEADERS"`
-	AllowMethods string `envconfig:"PROXYD_ALLOW_METHODS"`
+	ListenAddr     string `envconfig:"PROXYD_LISTEN_ADDR"`
+	BaseProxyUrl   string `envconfig:"PROXYD_BASE_PROXY_URL"`
+	ProxyApiKey    string `envconfig:"PROXYD_PROXY_API_KEY"`
+	CacheTTL       int    `envconfig:"PROXYD_CACHE_TTL_SECS"`
+	RestrictOrigin bool   `envconfig:"PROXYD_RESTRICT_ORIGIN"`
+	AllowHeaders   string `envconfig:"PROXYD_ALLOW_HEADERS"`
+	AllowMethods   string `envconfig:"PROXYD_ALLOW_METHODS"`
 }
 
 type Proxyd struct {
@@ -185,8 +185,14 @@ func (p *Proxyd) accessControl(r *http.Response) {
 		}
 	}
 
-	if p.config.AllowOrigin != "" {
-		r.Header.Set("Access-Control-Allow-Origin", p.config.AllowOrigin)
+	if p.config.RestrictOrigin {
+		if strings.HasSuffix(r.Request.Header.Get("Origin"), "shapeshift.com") {
+			r.Header.Set("Access-Control-Allow-Origin", r.Request.Header.Get("Origin"))
+		} else if strings.HasPrefix(r.Request.Header.Get("Origin"), "http://localhost:") {
+			r.Header.Set("Access-Control-Allow-Origin", r.Request.Header.Get("Origin"))
+		} else {
+			r.Header.Set("Access-Control-Allow-Origin", "app.shapeshift.com")
+		}
 	} else {
 		r.Header.Set("Access-Control-Allow-Origin", "*")
 	}
