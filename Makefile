@@ -29,7 +29,7 @@ install:
 	go install ./cmd/...
 
 docker-build:
-	@docker build --platform=${PLATFORM} . --file Dockerfile -t ${IMAGE}:${TAG}
+	@docker build --no-cache --platform=${PLATFORM} . --file Dockerfile -t ${IMAGE}:${TAG}
 
 docker-tag:
 	@docker tag ${IMAGE}:${TAG} ${PKG_REPO}/${IMAGE}:${TAG}
