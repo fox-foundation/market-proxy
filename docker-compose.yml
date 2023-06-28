@@ -8,7 +8,7 @@ networks:
 services:
   proxyd:
     hostname: proxyd
-    # image: ghcr.io/asamere/market-proxy:dev
+    # image: ghcr.io/fox-foundation/market-proxy:dev
     image: market-proxy
     build:
       dockerfile: ./Dockerfile

@@ -2,7 +2,7 @@ PLATFORM=linux/amd64
 BINARIES := proxyd
 IMAGE=market-proxy
 TAG=latest
-PKG_REPO=ghcr.io/asamere
+PKG_REPO=ghcr.io/fox-foundation
 # MAKEFLAGS += --no-print-directory
 
 .PHONY: clean build $(BINARIES)

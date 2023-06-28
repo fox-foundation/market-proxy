@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: market-proxy-deploy
-          image: ghcr.io/asamere/market-proxy:latest
+          image: ghcr.io/fox-foundation/market-proxy:latest
           imagePullPolicy: Always
           envFrom:
             - configMapRef:
